@@ -236,7 +236,71 @@ git retry fetch upstream
 
 ---
 
-## 8. 一页速查
+## 8. 国内网络下的实用做法
+
+GitHub 访问不稳是常态，尤其是 `CONNECT tunnel failed, response 502` 和克隆中途 `early EOF`。按可靠性排序：
+
+### 8.1 本地代理（最稳，长期方案）
+
+用 Clash Verge / v2rayN 一类工具，开启系统代理或 TUN 模式，并让 git 明确走它：
+
+```bash
+git config --global http.proxy  http://127.0.0.1:7890
+git config --global https.proxy http://127.0.0.1:7890
+# 取消
+git config --global --unset http.proxy
+git config --global --unset https.proxy
+```
+
+> 本项目当前环境里的 `127.0.0.1:57727` 是工具自带的内部代理端口，随会话存在，不作为长期依赖。
+
+### 8.2 重试别名（必备兜底）
+
+代理抖动往往几秒就恢复，单纯重试的收益极高：
+
+```bash
+git config --global alias.retry '!f() { for i in $(seq 1 30); do git "$@" && return 0; echo "retry $i"; sleep 3; done; return 1; }; f'
+git retry push
+git retry fetch upstream
+```
+
+### 8.3 镜像站加速拉取（应急，只读）
+
+镜像站在原地址前拼接即可，**只用于 `clone` / `fetch`，不要用于 `push`** —— 推送会把凭据经过第三方服务器。
+
+```bash
+# 直接临时拉上游
+git fetch https://gh-proxy.com/https://github.com/FongMi/TV.git fongmi:refs/remotes/upstream/fongmi
+
+# 或加一个只读镜像远端，官方通道不通时改用它
+git remote add mirror https://gh-proxy.com/https://github.com/FongMi/TV.git
+git fetch mirror fongmi
+```
+
+实测（2026-10-31）:
+
+| 方式 | 状态 | 说明 |
+|---|---|---|
+| `https://gh-proxy.com/https://github.com/...` | 可用 | 支持 git 协议、Archive、Raw、Release |
+| `https://ghproxy.net/` | 不可用 | 连接失败 |
+| `https://gitclone.com/github.com/...` | 不可用 | 返回 403 |
+| SSH 走 443（`ssh.github.com:443`） | 不可用 | 当前网络下连接超时 |
+
+镜像站是第三方服务，随时可能失效，不要作为唯一通道。
+
+### 8.4 减少要传的数据
+
+- 本仓库已是部分克隆（`--filter=blob:none`），历史齐全、文件按需取，这是最有效的一招。
+- 拉取上游写 `git fetch upstream`，**不要**加 `--unshallow` / `--refetch`，否则会重新下载全部历史文件。
+- 大文件（`libnode.so` 等）只在切换分支需要时才下载，尽量不要频繁在旧提交间来回切。
+
+### 8.5 心态
+
+日常开发（写代码、提交）完全离线可用。**推送失败不影响继续工作**，攒着等网络好再一次推上去即可。
+
+---
+
+## 9. 一页速查
 
 ```bash
 # 日常
